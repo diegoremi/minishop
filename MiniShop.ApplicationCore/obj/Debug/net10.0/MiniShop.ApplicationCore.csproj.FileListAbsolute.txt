@@ -1,0 +1,11 @@
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/bin/Debug/net10.0/MiniShop.ApplicationCore.deps.json
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/bin/Debug/net10.0/MiniShop.ApplicationCore.dll
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/bin/Debug/net10.0/MiniShop.ApplicationCore.pdb
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.GeneratedMSBuildEditorConfig.editorconfig
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.AssemblyInfoInputs.cache
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.AssemblyInfo.cs
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.csproj.CoreCompileInputs.cache
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.dll
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/refint/MiniShop.ApplicationCore.dll
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/MiniShop.ApplicationCore.pdb
+/Users/diegor/Public/projects/MiniShop/MiniShop.ApplicationCore/obj/Debug/net10.0/ref/MiniShop.ApplicationCore.dll

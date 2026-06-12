@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="MiniShop.ApplicationCore/MiniShop.ApplicationCore.csproj" />
+  <Project Path="MiniShop.Infrastructure/MiniShop.Infrastructure.csproj" />
+  <Project Path="MiniShop.PaymentWorker/MiniShop.PaymentWorker.csproj" />
+  <Project Path="MiniShop.Tests/MiniShop.Tests.csproj" />
+  <Project Path="MiniShop.WebApi/MiniShop.WebApi.csproj" />
+</Solution>
