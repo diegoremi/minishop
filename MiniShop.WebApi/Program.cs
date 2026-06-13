@@ -30,6 +30,7 @@ builder.Services.Configure<KafkaOptions>(
     builder.Configuration.GetSection("Kafka"));
 
 builder.Services.AddSingleton<IIntegrationEventPublisher, KafkaIntegrationEventPublisher>();
+builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 
 builder.Services.AddScoped<IOutboxService, OutboxService>();
 builder.Services.AddScoped<IInboxService, InboxService>();

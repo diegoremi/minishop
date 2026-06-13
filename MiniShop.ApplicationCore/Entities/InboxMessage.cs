@@ -57,7 +57,6 @@ public sealed class InboxMessage
     
     public void MarkAsDeadLettered(string error)
     {
-        ProcessingAttempts++;
         DeadLetteredOnUtc = DateTime.UtcNow;
         Error = error;
     }

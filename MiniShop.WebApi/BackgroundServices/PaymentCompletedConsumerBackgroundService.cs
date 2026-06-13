@@ -8,22 +8,32 @@ using MiniShop.Infrastructure.Events;
 
 namespace MiniShop.WebApi.BackgroundServices;
 
-public class PaymentCompletedConsumerBackgroundService : BackgroundService
+public sealed class PaymentCompletedConsumerBackgroundService : BackgroundService
 {
+    private const string ConsumerName = "minishop-orders-payment-completed-consumer";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly KafkaOptions _options;
+    private readonly IDeadLetterPublisher _deadLetterPublisher;
     private readonly ILogger<PaymentCompletedConsumerBackgroundService> _logger;
-    
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public PaymentCompletedConsumerBackgroundService(
         IServiceScopeFactory scopeFactory,
         IOptions<KafkaOptions> options,
+        IDeadLetterPublisher deadLetterPublisher,
         ILogger<PaymentCompletedConsumerBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
+        _deadLetterPublisher = deadLetterPublisher;
         _logger = logger;
     }
-    
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Yield();
@@ -35,11 +45,11 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
             AutoOffsetReset = AutoOffsetReset.Earliest,
             EnableAutoCommit = false
         };
-        
-        using var consumer  = new ConsumerBuilder<string, string>(config).Build();
-        
+
+        using var consumer = new ConsumerBuilder<string, string>(config).Build();
+
         consumer.Subscribe(_options.PaymentCompletedTopic);
-        
+
         _logger.LogInformation(
             "PaymentCompleted consumer started. Listening topic: {Topic}",
             _options.PaymentCompletedTopic);
@@ -52,28 +62,33 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
                 {
                     var result = consumer.Consume(stoppingToken);
 
-                    var paymentCompletedEvent =
-                        JsonSerializer.Deserialize<PaymentCompletedIntegrationEvent>(
-                            result.Message.Value,
-                            new JsonSerializerOptions
-                            {
-                                PropertyNameCaseInsensitive = true,
-                            });
-                    
+                    var paymentCompletedEvent = TryDeserializePaymentCompletedEvent(
+                        result,
+                        out var deserializeError);
+
                     if (paymentCompletedEvent is null)
                     {
-                        _logger.LogWarning("Invalid PaymentCompletedIntegrationEvent received.");
+                        await PublishInvalidPayloadToDeadLetterAsync(
+                            result,
+                            deserializeError ?? "Invalid PaymentCompletedIntegrationEvent payload.",
+                            stoppingToken);
+
                         consumer.Commit(result);
                         continue;
                     }
 
-                    await ProcessPaymentCompletedAsync(paymentCompletedEvent, stoppingToken);
+                    await ProcessPaymentCompletedWithRetryAsync(
+                        result,
+                        paymentCompletedEvent,
+                        stoppingToken);
 
                     consumer.Commit(result);
                 }
                 catch (ConsumeException ex)
                 {
-                    _logger.LogError(ex, "Kafka consume error while reading PaymentCompleted event.");
+                    _logger.LogError(
+                        ex,
+                        "Kafka consume error while reading PaymentCompleted event.");
                 }
                 catch (OperationCanceledException)
                 {
@@ -81,7 +96,9 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Unexpected error processing PaymentCompleted event.");
+                    _logger.LogError(
+                        ex,
+                        "Unexpected error in PaymentCompleted consumer loop. Message was not committed unless it was handled.");
                 }
             }
         }
@@ -91,105 +108,219 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
         }
     }
 
-    private async Task ProcessPaymentCompletedAsync(
-    PaymentCompletedIntegrationEvent paymentCompletedEvent,
-    CancellationToken cancellationToken)
-{
-    const string consumerName = "minishop-orders-payment-completed-consumer";
-
-    using var scope = _scopeFactory.CreateScope();
-
-    var inboxService = scope.ServiceProvider.GetRequiredService<IInboxService>();
-    var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
-
-    var shouldProcess = await inboxService.TryRegisterAsync(
-        paymentCompletedEvent,
-        consumerName,
-        cancellationToken);
-
-    if (!shouldProcess)
+    private PaymentCompletedIntegrationEvent? TryDeserializePaymentCompletedEvent(
+        ConsumeResult<string, string> result,
+        out string? error)
     {
-        _logger.LogInformation(
-            "PaymentCompleted event already processed. EventId: {EventId}, OrderId: {OrderId}",
-            paymentCompletedEvent.EventId,
-            paymentCompletedEvent.OrderId);
+        try
+        {
+            error = null;
 
-        return;
+            return JsonSerializer.Deserialize<PaymentCompletedIntegrationEvent>(
+                result.Message.Value,
+                JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
     }
 
-    try
+    private async Task ProcessPaymentCompletedWithRetryAsync(
+        ConsumeResult<string, string> result,
+        PaymentCompletedIntegrationEvent paymentCompletedEvent,
+        CancellationToken cancellationToken)
     {
-        var order = await orderService.GetOrderByIdAsync(paymentCompletedEvent.OrderId);
+        var maxAttempts = Math.Max(1, _options.PaymentCompletedMaxProcessingRetries);
+        Exception? lastException = null;
 
-        if (order is null)
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            _logger.LogWarning(
-                "PaymentCompleted received but Order was not found. OrderId: {OrderId}",
-                paymentCompletedEvent.OrderId);
+            try
+            {
+                await ProcessPaymentCompletedAsync(
+                    paymentCompletedEvent,
+                    cancellationToken);
 
-            await inboxService.MarkAsFailedAsync(
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+
+                _logger.LogWarning(
+                    ex,
+                    "Error processing PaymentCompleted event. Attempt {Attempt}/{MaxAttempts}. EventId: {EventId}, OrderId: {OrderId}",
+                    attempt,
+                    maxAttempts,
+                    paymentCompletedEvent.EventId,
+                    paymentCompletedEvent.OrderId);
+
+                if (attempt < maxAttempts)
+                {
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(attempt),
+                        cancellationToken);
+                }
+            }
+        }
+
+        var error = lastException?.ToString() ?? "Unknown processing error.";
+
+        await PublishPaymentCompletedToDeadLetterAsync(
+            result,
+            paymentCompletedEvent,
+            error,
+            maxAttempts,
+            cancellationToken);
+
+        using var scope = _scopeFactory.CreateScope();
+
+        var inboxService = scope.ServiceProvider.GetRequiredService<IInboxService>();
+
+        await inboxService.MarkAsDeadLetteredAsync(
+            paymentCompletedEvent.EventId,
+            ConsumerName,
+            error,
+            cancellationToken);
+
+        _logger.LogWarning(
+            "PaymentCompleted event moved to DLQ after {Attempts} attempts. EventId: {EventId}, OrderId: {OrderId}",
+            maxAttempts,
+            paymentCompletedEvent.EventId,
+            paymentCompletedEvent.OrderId);
+    }
+
+    private async Task ProcessPaymentCompletedAsync(
+        PaymentCompletedIntegrationEvent paymentCompletedEvent,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+
+        var inboxService = scope.ServiceProvider.GetRequiredService<IInboxService>();
+        var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
+
+        var shouldProcess = await inboxService.TryRegisterAsync(
+            paymentCompletedEvent,
+            ConsumerName,
+            cancellationToken);
+
+        if (!shouldProcess)
+        {
+            _logger.LogInformation(
+                "PaymentCompleted event was already processed or dead-lettered. EventId: {EventId}, OrderId: {OrderId}",
                 paymentCompletedEvent.EventId,
-                consumerName,
-                "Order was not found.",
-                cancellationToken);
+                paymentCompletedEvent.OrderId);
 
             return;
         }
 
-        if (order.Status == OrderStatus.Paid)
+        try
         {
-            _logger.LogInformation(
-                "PaymentCompleted received but Order is already paid. OrderId: {OrderId}",
+            var order = await orderService.GetOrderByIdAsync(
                 paymentCompletedEvent.OrderId);
+
+            if (order is null)
+            {
+                throw new InvalidOperationException(
+                    $"Order was not found. OrderId: {paymentCompletedEvent.OrderId}");
+            }
+
+            if (order.Status == OrderStatus.Paid)
+            {
+                _logger.LogInformation(
+                    "PaymentCompleted received but Order is already paid. OrderId: {OrderId}",
+                    paymentCompletedEvent.OrderId);
+
+                await inboxService.MarkAsProcessedAsync(
+                    paymentCompletedEvent.EventId,
+                    ConsumerName,
+                    cancellationToken);
+
+                return;
+            }
+
+            if (order.Status != OrderStatus.Placed)
+            {
+                throw new InvalidOperationException(
+                    $"Order is not in Placed status. OrderId: {paymentCompletedEvent.OrderId}, CurrentStatus: {order.Status}");
+            }
+
+            await orderService.PayOrderAsync(paymentCompletedEvent.OrderId);
 
             await inboxService.MarkAsProcessedAsync(
                 paymentCompletedEvent.EventId,
-                consumerName,
+                ConsumerName,
                 cancellationToken);
 
-            return;
-        }
-
-        if (order.Status != OrderStatus.Placed)
-        {
-            var error = $"Order is not in Placed status. Current status: {order.Status}.";
-
-            _logger.LogWarning(
-                "PaymentCompleted received but Order is not in Placed status. OrderId: {OrderId}, Status: {Status}",
+            _logger.LogInformation(
+                "Order marked as Paid from PaymentCompleted event. EventId: {EventId}, OrderId: {OrderId}, Amount: {Amount}",
+                paymentCompletedEvent.EventId,
                 paymentCompletedEvent.OrderId,
-                order.Status);
-
+                paymentCompletedEvent.Amount);
+        }
+        catch (Exception ex)
+        {
             await inboxService.MarkAsFailedAsync(
                 paymentCompletedEvent.EventId,
-                consumerName,
-                error,
+                ConsumerName,
+                ex.Message,
                 cancellationToken);
 
-            return;
+            throw;
         }
-
-        await orderService.PayOrderAsync(paymentCompletedEvent.OrderId);
-
-        await inboxService.MarkAsProcessedAsync(
-            paymentCompletedEvent.EventId,
-            consumerName,
-            cancellationToken);
-
-        _logger.LogInformation(
-            "Order marked as Paid from PaymentCompleted event. EventId: {EventId}, OrderId: {OrderId}, Amount: {Amount}",
-            paymentCompletedEvent.EventId,
-            paymentCompletedEvent.OrderId,
-            paymentCompletedEvent.Amount);
     }
-    catch (Exception ex)
+
+    private async Task PublishPaymentCompletedToDeadLetterAsync(
+        ConsumeResult<string, string> result,
+        PaymentCompletedIntegrationEvent paymentCompletedEvent,
+        string error,
+        int attempts,
+        CancellationToken cancellationToken)
     {
-        await inboxService.MarkAsFailedAsync(
-            paymentCompletedEvent.EventId,
-            consumerName,
-            ex.Message,
-            cancellationToken);
+        var deadLetterMessage = new DeadLetterMessage(
+            OriginalTopic: result.Topic,
+            OriginalPartition: result.Partition.Value,
+            OriginalOffset: result.Offset.Value,
+            Key: result.Message.Key,
+            Payload: result.Message.Value,
+            Error: error,
+            Consumer: ConsumerName,
+            EventType: nameof(PaymentCompletedIntegrationEvent),
+            Attempts: attempts,
+            FailedOnUtc: DateTime.UtcNow);
 
-        throw;
+        await _deadLetterPublisher.PublishAsync(
+            _options.PaymentCompletedDeadLetterTopic,
+            deadLetterMessage,
+            cancellationToken);
     }
-}
+
+    private async Task PublishInvalidPayloadToDeadLetterAsync(
+        ConsumeResult<string, string> result,
+        string error,
+        CancellationToken cancellationToken)
+    {
+        var deadLetterMessage = new DeadLetterMessage(
+            OriginalTopic: result.Topic,
+            OriginalPartition: result.Partition.Value,
+            OriginalOffset: result.Offset.Value,
+            Key: result.Message.Key,
+            Payload: result.Message.Value,
+            Error: error,
+            Consumer: ConsumerName,
+            EventType: "InvalidPayload",
+            Attempts: 0,
+            FailedOnUtc: DateTime.UtcNow);
+
+        await _deadLetterPublisher.PublishAsync(
+            _options.PaymentCompletedDeadLetterTopic,
+            deadLetterMessage,
+            cancellationToken);
+    }
 }

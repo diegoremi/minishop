@@ -35,8 +35,11 @@ public sealed class InboxService : IInboxService
                 cancellationToken);
 
         if (existingMessage is not null)
-            return existingMessage.ProcessedOnUtc is null;
-
+        {
+            return existingMessage.ProcessedOnUtc is null &&
+            existingMessage.DeadLetteredOnUtc is null;
+        }
+        
         var content = JsonSerializer.Serialize(
             integrationEvent,
             integrationEvent.GetType(),
@@ -62,11 +65,10 @@ public sealed class InboxService : IInboxService
         string consumer, 
         CancellationToken cancellationToken = default)
     {
-        var inboxMessage = await _dbContext.InboxMessages
-            .FirstOrDefaultAsync(
-                x => x.EventId == eventId &&
-                     x.Consumer == consumer,
-                cancellationToken);
+        var inboxMessage = await GetInboxMessageAsync(
+            eventId,
+            consumer,
+            cancellationToken);
 
         if (inboxMessage is null)
             return;
@@ -82,11 +84,10 @@ public sealed class InboxService : IInboxService
         string error, 
         CancellationToken cancellationToken = default)
     {
-        var inboxMessage = await _dbContext.InboxMessages
-            .FirstOrDefaultAsync(
-                x => x.EventId == eventId &&
-                     x.Consumer == consumer,
-                cancellationToken);
+        var inboxMessage = await GetInboxMessageAsync(
+            eventId,
+            consumer,
+            cancellationToken);
 
         if (inboxMessage is null)
         {
@@ -96,5 +97,35 @@ public sealed class InboxService : IInboxService
         inboxMessage.MarkAsFailed(error);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task MarkAsDeadLetteredAsync(Guid eventId, string consumer, string error,
+        CancellationToken cancellationToken = default)
+    {
+        var inboxMessage = await GetInboxMessageAsync(
+            eventId,
+            consumer,
+            cancellationToken);
+
+        if (inboxMessage is null)
+        {
+            return;
+        }
+
+        inboxMessage.MarkAsDeadLettered(error);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+    
+    private async Task<InboxMessage?> GetInboxMessageAsync(
+        Guid eventId,
+        string consumer,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.InboxMessages
+            .FirstOrDefaultAsync(
+                x => x.EventId == eventId &&
+                     x.Consumer == consumer,
+                cancellationToken);
     }
 }

@@ -19,4 +19,10 @@ public interface IInboxService
         string consumer,
         string error,
         CancellationToken cancellationToken = default);
+    
+    Task MarkAsDeadLetteredAsync(
+        Guid eventId,
+        string consumer,
+        string error,
+        CancellationToken cancellationToken = default);
 }
