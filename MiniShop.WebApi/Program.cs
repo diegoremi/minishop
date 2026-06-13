@@ -16,7 +16,8 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 builder.Services.AddDbContext<MiniShopDbContext>(options =>
 {
-    options.UseInMemoryDatabase("MiniShop");
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("MiniShop"));
 });
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
@@ -33,6 +34,7 @@ builder.Services.AddSingleton<IIntegrationEventPublisher, KafkaIntegrationEventP
 builder.Services.AddScoped<IOutboxService, OutboxService>();
 
 builder.Services.AddHostedService<OutboxBackgroundService>();
+builder.Services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
 
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 

@@ -38,3 +38,17 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     depends_on:
       - kafka
+
+  sqlserver:
+    image: mcr.microsoft.com/azure-sql-edge
+    container_name: minishop-sqlserver
+    environment:
+      ACCEPT_EULA: "1"
+      MSSQL_SA_PASSWORD: "Your_password123"
+    ports:
+      - "1433:1433"
+    volumes:
+      - minishop-sqlserver-data:/var/opt/mssql
+
+volumes:
+  minishop-sqlserver-data:

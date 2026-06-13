@@ -7,6 +7,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
+# OS files
+.DS_Store
+Thumbs.db
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
@@ -27,6 +31,7 @@ bld/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.dotnet/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -35,14 +40,28 @@ ScaffoldingReadMe.txt
 *.nupkg
 # NuGet Symbol Packages
 *.snupkg
+packages/
 
-# dotenv environment variables file
+# Local settings and secrets
 .env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+appsettings.*.local.json
+appsettings.Production.json
+appsettings.*.Production.json
+secrets.json
 
 # Others
 ~$*
 *~
 CodeCoverage/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+*.trx
 
 # MSBuild Binary and Structured Log
 *.binlog
@@ -56,6 +75,22 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+# Visual Studio
+.vs/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.sln.DotSettings.user
+
 # JetBrains Rider / IntelliJ
 .idea/
 *.sln.iml
+
+# VS Code workspace preferences can be local-only; commit explicit shared files with -f if needed.
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
