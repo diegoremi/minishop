@@ -67,7 +67,7 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
                         continue;
                     }
 
-                    await ProcessPaymentCompletedAsync(paymentCompletedEvent);
+                    await ProcessPaymentCompletedAsync(paymentCompletedEvent, stoppingToken);
 
                     consumer.Commit(result);
                 }
@@ -91,12 +91,34 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
         }
     }
 
-    private async Task ProcessPaymentCompletedAsync(PaymentCompletedIntegrationEvent paymentCompletedEvent)
+    private async Task ProcessPaymentCompletedAsync(
+    PaymentCompletedIntegrationEvent paymentCompletedEvent,
+    CancellationToken cancellationToken)
+{
+    const string consumerName = "minishop-orders-payment-completed-consumer";
+
+    using var scope = _scopeFactory.CreateScope();
+
+    var inboxService = scope.ServiceProvider.GetRequiredService<IInboxService>();
+    var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
+
+    var shouldProcess = await inboxService.TryRegisterAsync(
+        paymentCompletedEvent,
+        consumerName,
+        cancellationToken);
+
+    if (!shouldProcess)
     {
-        using var scope = _scopeFactory.CreateScope();
-        
-        var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
-        
+        _logger.LogInformation(
+            "PaymentCompleted event already processed. EventId: {EventId}, OrderId: {OrderId}",
+            paymentCompletedEvent.EventId,
+            paymentCompletedEvent.OrderId);
+
+        return;
+    }
+
+    try
+    {
         var order = await orderService.GetOrderByIdAsync(paymentCompletedEvent.OrderId);
 
         if (order is null)
@@ -104,6 +126,12 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
             _logger.LogWarning(
                 "PaymentCompleted received but Order was not found. OrderId: {OrderId}",
                 paymentCompletedEvent.OrderId);
+
+            await inboxService.MarkAsFailedAsync(
+                paymentCompletedEvent.EventId,
+                consumerName,
+                "Order was not found.",
+                cancellationToken);
 
             return;
         }
@@ -114,24 +142,54 @@ public class PaymentCompletedConsumerBackgroundService : BackgroundService
                 "PaymentCompleted received but Order is already paid. OrderId: {OrderId}",
                 paymentCompletedEvent.OrderId);
 
+            await inboxService.MarkAsProcessedAsync(
+                paymentCompletedEvent.EventId,
+                consumerName,
+                cancellationToken);
+
             return;
         }
 
         if (order.Status != OrderStatus.Placed)
         {
+            var error = $"Order is not in Placed status. Current status: {order.Status}.";
+
             _logger.LogWarning(
                 "PaymentCompleted received but Order is not in Placed status. OrderId: {OrderId}, Status: {Status}",
                 paymentCompletedEvent.OrderId,
                 order.Status);
 
+            await inboxService.MarkAsFailedAsync(
+                paymentCompletedEvent.EventId,
+                consumerName,
+                error,
+                cancellationToken);
+
             return;
         }
-        
+
         await orderService.PayOrderAsync(paymentCompletedEvent.OrderId);
 
+        await inboxService.MarkAsProcessedAsync(
+            paymentCompletedEvent.EventId,
+            consumerName,
+            cancellationToken);
+
         _logger.LogInformation(
-            "Order marked as Paid from PaymentCompleted event. OrderId: {OrderId}, Amount: {Amount}",
+            "Order marked as Paid from PaymentCompleted event. EventId: {EventId}, OrderId: {OrderId}, Amount: {Amount}",
+            paymentCompletedEvent.EventId,
             paymentCompletedEvent.OrderId,
             paymentCompletedEvent.Amount);
     }
+    catch (Exception ex)
+    {
+        await inboxService.MarkAsFailedAsync(
+            paymentCompletedEvent.EventId,
+            consumerName,
+            ex.Message,
+            cancellationToken);
+
+        throw;
+    }
+}
 }

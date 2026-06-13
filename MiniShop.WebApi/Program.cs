@@ -32,6 +32,7 @@ builder.Services.Configure<KafkaOptions>(
 builder.Services.AddSingleton<IIntegrationEventPublisher, KafkaIntegrationEventPublisher>();
 
 builder.Services.AddScoped<IOutboxService, OutboxService>();
+builder.Services.AddScoped<IInboxService, InboxService>();
 
 builder.Services.AddHostedService<OutboxBackgroundService>();
 builder.Services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
