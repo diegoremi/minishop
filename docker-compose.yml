@@ -8,10 +8,9 @@ services:
       - "5001:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
-
-      ConnectionStrings__MiniShop: "Server=sqlserver,1433;Database=MiniShop;User Id=sa;Password=Your_password123;TrustServerCertificate=True"
+      DOTNET_ENVIRONMENT: Docker
+      ConnectionStrings__MiniShopDb: "Server=sqlserver,1433;Database=MiniShop;User Id=sa;Password=${SQL_PASSWORD};TrustServerCertificate=True;Encrypt=False"
       ConnectionStrings__Redis: "redis:6379"
-
       Kafka__BootstrapServers: "kafka:9092"
       Kafka__OrderPlacedTopic: "minishop.order-placed.v1"
       Kafka__OrderPaidTopic: "minishop.order-paid.v1"
@@ -32,7 +31,7 @@ services:
     container_name: minishop-payment-worker
     environment:
       DOTNET_ENVIRONMENT: Docker
-
+      ConnectionStrings__MiniShopDb: "Server=sqlserver,1433;Database=MiniShop;User Id=sa;Password=${SQL_PASSWORD};TrustServerCertificate=True;Encrypt=False"
       Kafka__BootstrapServers: "kafka:9092"
       Kafka__OrderPlacedTopic: "minishop.order-placed.v1"
       Kafka__PaymentCompletedTopic: "minishop.payment-completed.v1"
@@ -86,7 +85,7 @@ services:
     container_name: minishop-sqlserver
     environment:
       ACCEPT_EULA: "1"
-      MSSQL_SA_PASSWORD: "Your_password123"
+      MSSQL_SA_PASSWORD: "${SQL_PASSWORD}"
     ports:
       - "1433:1433"
     volumes:

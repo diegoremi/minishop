@@ -13,7 +13,7 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
     private const string ConsumerName = "minishop-orders-payment-completed-consumer";
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly KafkaOptions _options;
+    private readonly KafkaEventOptions _eventOptions;
     private readonly IDeadLetterPublisher _deadLetterPublisher;
     private readonly ILogger<PaymentCompletedConsumerBackgroundService> _logger;
 
@@ -24,12 +24,12 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
 
     public PaymentCompletedConsumerBackgroundService(
         IServiceScopeFactory scopeFactory,
-        IOptions<KafkaOptions> options,
+        IOptions<KafkaEventOptions> options,
         IDeadLetterPublisher deadLetterPublisher,
         ILogger<PaymentCompletedConsumerBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
-        _options = options.Value;
+        _eventOptions = options.Value;
         _deadLetterPublisher = deadLetterPublisher;
         _logger = logger;
     }
@@ -40,19 +40,19 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
 
         var config = new ConsumerConfig
         {
-            BootstrapServers = _options.BootstrapServers,
-            GroupId = _options.PaymentCompletedConsumerGroup,
+            BootstrapServers = _eventOptions.BootstrapServers,
+            GroupId = _eventOptions.PaymentCompletedConsumerGroup,
             AutoOffsetReset = AutoOffsetReset.Earliest,
             EnableAutoCommit = false
         };
 
         using var consumer = new ConsumerBuilder<string, string>(config).Build();
 
-        consumer.Subscribe(_options.PaymentCompletedTopic);
+        consumer.Subscribe(_eventOptions.PaymentCompletedTopic);
 
         _logger.LogInformation(
             "PaymentCompleted consumer started. Listening topic: {Topic}",
-            _options.PaymentCompletedTopic);
+            _eventOptions.PaymentCompletedTopic);
 
         try
         {
@@ -132,7 +132,7 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
         PaymentCompletedIntegrationEvent paymentCompletedEvent,
         CancellationToken cancellationToken)
     {
-        var maxAttempts = Math.Max(1, _options.PaymentCompletedMaxProcessingRetries);
+        var maxAttempts = Math.Max(1, _eventOptions.PaymentCompletedMaxProcessingRetries);
         Exception? lastException = null;
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -296,7 +296,7 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
             FailedOnUtc: DateTime.UtcNow);
 
         await _deadLetterPublisher.PublishAsync(
-            _options.PaymentCompletedDeadLetterTopic,
+            _eventOptions.PaymentCompletedDeadLetterTopic,
             deadLetterMessage,
             cancellationToken);
     }
@@ -319,7 +319,7 @@ public sealed class PaymentCompletedConsumerBackgroundService : BackgroundServic
             FailedOnUtc: DateTime.UtcNow);
 
         await _deadLetterPublisher.PublishAsync(
-            _options.PaymentCompletedDeadLetterTopic,
+            _eventOptions.PaymentCompletedDeadLetterTopic,
             deadLetterMessage,
             cancellationToken);
     }

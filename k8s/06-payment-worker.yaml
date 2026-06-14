@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-worker
+  namespace: minishop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-worker
+  template:
+    metadata:
+      labels:
+        app: payment-worker
+    spec:
+      containers:
+        - name: payment-worker
+          image: minishop-payment-worker:latest
+          imagePullPolicy: Never
+          env:
+            - name: DOTNET_ENVIRONMENT
+              value: "Kubernetes"
+
+            - name: Kafka__BootstrapServers
+              value: "kafka:9092"
+            - name: Kafka__OrderPlacedTopic
+              value: "minishop.order-placed.v1"
+            - name: Kafka__PaymentCompletedTopic
+              value: "minishop.payment-completed.v1"
+            - name: Kafka__ConsumerGroup
+              value: "minishop-payment-worker"

@@ -46,6 +46,7 @@ packages/
 .env
 .env.*
 !.env.example
+*.local.json
 appsettings.Local.json
 appsettings.*.Local.json
 appsettings.*.local.json

@@ -1,58 +1,38 @@
-using Microsoft.EntityFrameworkCore;
-using MiniShop.ApplicationCore.Interfaces;
-using MiniShop.Infrastructure.Data;
-using MiniShop.ApplicationCore.Services;
-using MiniShop.Infrastructure.Events;
-using MiniShop.WebApi.Caching;
-using MiniShop.WebApi.BackgroundServices;
+using MiniShop.Infrastructure.Configuration;
+using MiniShop.WebApi.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddMiniShopConfiguration(builder.Configuration);
+
 builder.Services.AddControllers();
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration.GetConnectionString("Redis");
-    options.InstanceName = "MiniShop:";
-});
-builder.Services.AddDbContext<MiniShopDbContext>(options =>
-{
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("MiniShop"));
-});
 
-builder.Services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
+builder.Services.AddMiniShopPersistence(
+    builder.Configuration,
+    builder.Environment);
 
-builder.Services.AddScoped<IOrderRepository, OrderRepository>();
-builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddMiniShopCaching(
+    builder.Configuration,
+    builder.Environment);
 
-builder.Services.AddScoped<IDomainEventDispatcher, LoggingDomainEventDispatcher>();
-builder.Services.Configure<KafkaOptions>(
-    builder.Configuration.GetSection("Kafka"));
+builder.Services.AddMiniShopApplicationServices();
 
-builder.Services.AddSingleton<IIntegrationEventPublisher, KafkaIntegrationEventPublisher>();
-builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+builder.Services.AddMiniShopMessaging();
 
-builder.Services.AddScoped<IOutboxService, OutboxService>();
-builder.Services.AddScoped<IInboxService, InboxService>();
-
-builder.Services.AddHostedService<OutboxBackgroundService>();
-builder.Services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
-
-builder.Services.AddScoped<ICacheService, RedisCacheService>();
+builder.Services.AddMiniShopBackgroundServices(
+    builder.Environment);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseMiniShopSwagger(builder.Configuration);
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.MapControllers();
 

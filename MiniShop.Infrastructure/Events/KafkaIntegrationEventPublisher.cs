@@ -9,7 +9,7 @@ namespace MiniShop.Infrastructure.Events;
 
 public sealed class KafkaIntegrationEventPublisher: IIntegrationEventPublisher, IDisposable
 {
-    private readonly KafkaOptions _options;
+    private readonly KafkaEventOptions _eventOptions;
     private readonly ILogger<KafkaIntegrationEventPublisher> _logger;
     private readonly IProducer<string, string> _producer;
 
@@ -20,15 +20,15 @@ public sealed class KafkaIntegrationEventPublisher: IIntegrationEventPublisher, 
     };
 
     public KafkaIntegrationEventPublisher(
-        IOptions<KafkaOptions> options,
+        IOptions<KafkaEventOptions> options,
         ILogger<KafkaIntegrationEventPublisher> logger )
     {
-        _options = options.Value;
+        _eventOptions = options.Value;
         _logger = logger;
 
         var producerConfig = new ProducerConfig
         {
-            BootstrapServers = _options.BootstrapServers,
+            BootstrapServers = _eventOptions.BootstrapServers,
             ClientId = "minishop-webapi"
         };
         
@@ -66,8 +66,8 @@ public sealed class KafkaIntegrationEventPublisher: IIntegrationEventPublisher, 
     {
         return integrationEvent switch
         {
-            OrderPlacedIntegrationEvent => _options.OrderPlacedTopic,
-            OrderPaidIntegrationEvent => _options.OrderPaidTopic,
+            OrderPlacedIntegrationEvent => _eventOptions.OrderPlacedTopic,
+            OrderPaidIntegrationEvent => _eventOptions.OrderPaidTopic,
             _ => throw new InvalidOperationException(
                 $"No Kafka topic configured for integration event type {integrationEvent.GetType().Name}")
         };

@@ -17,7 +17,7 @@ public sealed class KafkaDeadLetterPublisher : IDeadLetterPublisher, IDisposable
     };
     
     public KafkaDeadLetterPublisher(
-        IOptions<KafkaOptions> options,
+        IOptions<KafkaEventOptions> options,
         ILogger<KafkaDeadLetterPublisher> logger)
     {
         _logger = logger;

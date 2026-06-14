@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-create-topics
+  namespace: minishop
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-create-topics
+          image: apache/kafka:3.9.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for Kafka..."
+              sleep 20
+
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.order-placed.v1 --partitions 3 --replication-factor 1
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.payment-completed.v1 --partitions 3 --replication-factor 1
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.order-paid.v1 --partitions 3 --replication-factor 1
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.payment-completed.dlq.v1 --partitions 3 --replication-factor 1
+
+              echo "Topics created."

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -25,34 +26,40 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-
-        builder.ConfigureTestServices(services =>
+        
+        builder.ConfigureAppConfiguration((context, config) =>
         {
-            // Remove the real SQL Server EF Core registration
-            services.RemoveAll<MiniShopDbContext>();
-            services.RemoveAll<DbContextOptions>();
-            services.RemoveAll<DbContextOptions<MiniShopDbContext>>();
-            services.RemoveAll<IDbContextOptionsConfiguration<MiniShopDbContext>>();
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:MiniShopDb"] = "Data Source=:memory:",
+                ["ConnectionStrings:Redis"] = "fake-redis",
+                ["Kafka:BootstrapServers"] = "fake-kafka",
+                ["Kafka:OrderPlacedTopic"] = "minishop.order-placed.v1",
+                ["Kafka:PaymentCompletedTopic"] = "minishop.payment-completed.v1",
+                ["Kafka:OrderPaidTopic"] = "minishop.order-paid.v1",
+                ["Kafka:PaymentWorkerConsumerGroup"] = "minishop-payment-worker-tests",
+                ["Kafka:WebApiConsumerGroup"] = "minishop-webapi-tests",
+                ["Swagger:Enabled"] = "false"
+            });
+        });
 
-            // Register SQLite in-memory for integration tests
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<DbContextOptions<MiniShopDbContext>>();
+
+            var connection = new SqliteConnection("DataSource=:memory:");
+            connection.Open();
+
+            services.AddSingleton(connection);
+
             services.AddDbContext<MiniShopDbContext>(options =>
             {
-                options.UseSqlite(_connection);
+                options.UseSqlite(connection);
             });
 
-            // Replace Redis with in-memory distributed cache
-            services.RemoveAll<Microsoft.Extensions.Caching.Distributed.IDistributedCache>();
-            services.AddDistributedMemoryCache();
-
-            // Disable background services:
-            // OutboxBackgroundService and PaymentCompletedConsumerBackgroundService
-            services.RemoveAll<IHostedService>();
-
-            // Replace Kafka publisher with fake publisher
-            services.RemoveAll<IIntegrationEventPublisher>();
-            services.AddSingleton<FakeIntegrationEventPublisher>();
-            services.AddSingleton<IIntegrationEventPublisher>(sp =>
-                sp.GetRequiredService<FakeIntegrationEventPublisher>());
+            using var scope = services.BuildServiceProvider().CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<MiniShopDbContext>();
+            dbContext.Database.EnsureCreated();
         });
     }
 

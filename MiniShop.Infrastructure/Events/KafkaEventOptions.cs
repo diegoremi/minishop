@@ -1,6 +1,6 @@
 namespace MiniShop.Infrastructure.Events;
 
-public sealed class KafkaOptions
+public sealed class KafkaEventOptions
 {
     public string BootstrapServers { get; set; } = string.Empty;
     public string OrderPlacedTopic { get; set; } = "minishop.order-placed.v1";
