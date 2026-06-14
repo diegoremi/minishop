@@ -56,5 +56,13 @@ public class MiniShopDbContext : DbContext
             builder.Property(x => x.Error)
                 .HasMaxLength(4000);
         });
+        
+        modelBuilder.Entity<Product>()
+            .Property(product => product.Price)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<OrderItem>()
+            .Property(orderItem => orderItem.UnitPrice)
+            .HasPrecision(18, 2);
     }
 }
