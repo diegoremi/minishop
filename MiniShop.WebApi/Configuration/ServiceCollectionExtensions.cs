@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MiniShop.ApplicationCore.Interfaces;
 using MiniShop.ApplicationCore.Services;
 using MiniShop.Infrastructure.Configuration;
@@ -16,7 +17,7 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration,
         IWebHostEnvironment environment)
     {
-        if (environment.IsEnvironment("Testing"))
+        if (environment.IsEnvironment(EnvironmentNames.Testing))
         {
             return services;
         }
@@ -28,16 +29,16 @@ public static class ServiceCollectionExtensions
         {
             options.UseSqlServer(sqlConnectionString);
         });
-        
+
         return services;
     }
-    
+
     public static IServiceCollection AddMiniShopCaching(
         this IServiceCollection services,
         IConfiguration configuration,
         IWebHostEnvironment environment)
     {
-        if (environment.IsEnvironment("Testing"))
+        if (environment.IsEnvironment(EnvironmentNames.Testing))
         {
             services.AddDistributedMemoryCache();
         }
@@ -70,7 +71,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IOutboxService, OutboxService>();
         services.AddScoped<IInboxService, InboxService>();
-        
+
         return services;
     }
 
@@ -87,13 +88,33 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IWebHostEnvironment environment)
     {
-        if (environment.IsEnvironment("Testing"))
+        if (environment.IsEnvironment(EnvironmentNames.Testing))
         {
             return services;
         }
 
         services.AddHostedService<OutboxBackgroundService>();
         services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddMiniShopHealthChecks(
+        this IServiceCollection services,
+        IWebHostEnvironment environment)
+    {
+        var healthChecks = services.AddHealthChecks()
+            .AddCheck(
+                name: "self",
+                check: () => HealthCheckResult.Healthy(),
+                tags: ["live"]);
+
+        if (!environment.IsEnvironment(EnvironmentNames.Testing))
+        {
+            healthChecks.AddDbContextCheck<MiniShopDbContext>(
+                name: "database",
+                tags: ["ready"]);
+        }
 
         return services;
     }
