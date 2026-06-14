@@ -76,8 +76,12 @@ public static class ServiceCollectionExtensions
     }
 
     public static IServiceCollection AddMiniShopMessaging(
-        this IServiceCollection services)
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
+        services.Configure<KafkaEventOptions>(
+            configuration.GetSection("Kafka"));
+
         services.AddSingleton<IIntegrationEventPublisher, KafkaIntegrationEventPublisher>();
         services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 

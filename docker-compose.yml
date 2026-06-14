@@ -20,9 +20,12 @@ services:
       Kafka__PaymentCompletedMaxProcessingRetries: 3
 
     depends_on:
-      - sqlserver
-      - redis
-      - kafka
+      kafka-init:
+        condition: service_completed_successfully
+      sqlserver:
+        condition: service_started
+      redis:
+        condition: service_started
 
   payment-worker:
     build:
@@ -38,7 +41,10 @@ services:
       Kafka__ConsumerGroup: "minishop-payment-worker"
 
     depends_on:
-      - kafka
+      kafka-init:
+        condition: service_completed_successfully
+      sqlserver:
+        condition: service_started
 
   redis:
     image: redis:7
@@ -78,7 +84,8 @@ services:
       KAFKA_CLUSTERS_0_NAME: MiniShop Local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     depends_on:
-      - kafka
+      kafka-init:
+        condition: service_completed_successfully
 
   sqlserver:
     image: mcr.microsoft.com/azure-sql-edge
@@ -90,6 +97,28 @@ services:
       - "1433:1433"
     volumes:
       - minishop-sqlserver-data:/var/opt/mssql
+    
+  kafka-init:
+    image: apache/kafka:3.9.1
+    container_name: minishop-kafka-init
+    depends_on:
+      - kafka
+    command: >
+      sh -c "
+        echo 'Waiting for Kafka...';
+        until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list; do
+          sleep 2;
+        done;
+
+        echo 'Creating Kafka topics...';
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.order-placed.v1 --partitions 3 --replication-factor 1;
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.payment-completed.v1 --partitions 3 --replication-factor 1;
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.order-paid.v1 --partitions 3 --replication-factor 1;
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic minishop.payment-completed.dlq.v1 --partitions 3 --replication-factor 1;
+
+        echo 'Kafka topics created.';
+      "
 
 volumes:
   minishop-sqlserver-data:

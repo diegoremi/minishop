@@ -17,7 +17,7 @@ builder.Services.AddMiniShopCaching(
 
 builder.Services.AddMiniShopApplicationServices();
 
-builder.Services.AddMiniShopMessaging();
+builder.Services.AddMiniShopMessaging(builder.Configuration);
 
 builder.Services.AddMiniShopBackgroundServices(builder.Environment);
 
