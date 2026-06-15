@@ -9,24 +9,35 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddOptions<KafkaOptions>()
-            .Bind(configuration.GetSection(KafkaOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
+        var features = configuration.GetMiniShopFeatures();
 
-        services.AddOptions<OutboxOptions>()
-            .Bind(configuration.GetSection(OutboxOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-        
-        services.AddOptions<InboxOptions>()
-            .Bind(configuration.GetSection(InboxOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
+        if (features.UseKafka)
+        {
+            services.AddOptions<KafkaOptions>()
+                .Bind(configuration.GetSection(KafkaOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+        }
+
+        if (features.UseKafka && features.RunOutboxPublisher)
+        {
+            services.AddOptions<OutboxOptions>()
+                .Bind(configuration.GetSection(OutboxOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+        }
+
+        if (features.UseKafka && features.RunPaymentCompletedConsumer)
+        {
+            services.AddOptions<InboxOptions>()
+                .Bind(configuration.GetSection(InboxOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+        }
 
         return services;
     }
-    
+
     public static string GetRequiredConnectionString(
         this IConfiguration configuration,
         string name)

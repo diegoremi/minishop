@@ -5,6 +5,7 @@ using MiniShop.ApplicationCore.Services;
 using MiniShop.Infrastructure.Configuration;
 using MiniShop.Infrastructure.Data;
 using MiniShop.Infrastructure.Events;
+using MiniShop.Infrastructure.Messaging;
 using MiniShop.WebApi.BackgroundServices;
 using MiniShop.WebApi.Caching;
 
@@ -38,7 +39,9 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration,
         IWebHostEnvironment environment)
     {
-        if (environment.IsEnvironment(EnvironmentNames.Testing))
+        var features = configuration.GetMiniShopFeatures();
+
+        if (environment.IsEnvironment(EnvironmentNames.Testing) || !features.UseRedis)
         {
             services.AddDistributedMemoryCache();
         }
@@ -79,6 +82,15 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        var features = configuration.GetMiniShopFeatures();
+
+        if (!features.UseKafka)
+        {
+            services.AddSingleton<IIntegrationEventPublisher, NoOpIntegrationEventPublisher>();
+
+            return services;
+        }
+
         services.Configure<KafkaEventOptions>(
             configuration.GetSection("Kafka"));
 
@@ -90,6 +102,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddMiniShopBackgroundServices(
         this IServiceCollection services,
+        IConfiguration configuration,
         IWebHostEnvironment environment)
     {
         if (environment.IsEnvironment(EnvironmentNames.Testing))
@@ -97,14 +110,29 @@ public static class ServiceCollectionExtensions
             return services;
         }
 
-        services.AddHostedService<OutboxBackgroundService>();
-        services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
+        var features = configuration.GetMiniShopFeatures();
+
+        if (!features.UseKafka)
+        {
+            return services;
+        }
+
+        if (features.RunOutboxPublisher)
+        {
+            services.AddHostedService<OutboxBackgroundService>();
+        }
+
+        if (features.RunPaymentCompletedConsumer)
+        {
+            services.AddHostedService<PaymentCompletedConsumerBackgroundService>();
+        }
 
         return services;
     }
 
     public static IServiceCollection AddMiniShopHealthChecks(
         this IServiceCollection services,
+        IConfiguration configuration,
         IWebHostEnvironment environment)
     {
         var healthChecks = services.AddHealthChecks()

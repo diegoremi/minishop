@@ -19,9 +19,13 @@ builder.Services.AddMiniShopApplicationServices();
 
 builder.Services.AddMiniShopMessaging(builder.Configuration);
 
-builder.Services.AddMiniShopBackgroundServices(builder.Environment);
+builder.Services.AddMiniShopBackgroundServices(
+    builder.Configuration,
+    builder.Environment);
 
-builder.Services.AddMiniShopHealthChecks(builder.Environment);
+builder.Services.AddMiniShopHealthChecks(
+    builder.Configuration,
+    builder.Environment);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -30,7 +34,9 @@ var app = builder.Build();
 
 app.UseMiniShopSwagger(builder.Configuration);
 
-if (!app.Environment.IsEnvironment(EnvironmentNames.Testing))
+if (!app.Environment.IsEnvironment(EnvironmentNames.Testing)
+    && !app.Environment.IsEnvironment("Docker")
+    && !app.Environment.IsEnvironment("AzureDev"))
 {
     app.UseHttpsRedirection();
 }
@@ -40,8 +46,6 @@ app.MapControllers();
 app.MapMiniShopHealthChecks();
 
 await app.ApplyMiniShopDatabaseMigrationsAsync();
-
-app.UseMiniShopSwagger(builder.Configuration);
 
 app.Run();
 
