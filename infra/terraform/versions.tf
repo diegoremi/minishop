@@ -1,0 +1,22 @@
+terraform {
+  required_version = ">=1.8.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "4.64.0"
+    }
+
+    random = {
+      source  = "hashicorp/random"
+      version = "3.8.1"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = var.subscription_id
+
+}

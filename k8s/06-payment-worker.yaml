@@ -20,7 +20,6 @@ spec:
           env:
             - name: DOTNET_ENVIRONMENT
               value: "Kubernetes"
-
             - name: Kafka__BootstrapServers
               value: "kafka:9092"
             - name: Kafka__OrderPlacedTopic
@@ -29,3 +28,11 @@ spec:
               value: "minishop.payment-completed.v1"
             - name: Kafka__ConsumerGroup
               value: "minishop-payment-worker"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

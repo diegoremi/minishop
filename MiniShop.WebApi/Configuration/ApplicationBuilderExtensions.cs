@@ -8,10 +8,22 @@ public static class ApplicationBuilderExtensions
         this WebApplication app,
         IConfiguration configuration)
     {
-        if (configuration.GetValue<bool>("Swagger:Enabled"))
+        var swaggerEnabled =
+            configuration.GetValue<bool>("Swagger:Enabled");
+
+        if (app.Environment.IsDevelopment()
+            || app.Environment.IsEnvironment("Docker")
+            || app.Environment.IsEnvironment("AzureDev")
+            || swaggerEnabled)
         {
             app.UseSwagger();
-            app.UseSwaggerUI();
+
+            app.UseSwaggerUI(options =>
+            {
+                options.SwaggerEndpoint(
+                    "/swagger/v1/swagger.json",
+                    "MiniShop API v1");
+            });
         }
 
         return app;
